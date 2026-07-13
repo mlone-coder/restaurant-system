@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>智能监控 WebRTC</title>
+
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+
+    <style>
+        *{
+            box-sizing:border-box;
+        }
+        
+        body{
+            margin:0;
+            padding:20px;
+            background:#111;
+            color:white;
+            font-family:Arial,sans-serif;
+            display:flex;
+            justify-content:center;
+        }
+        
+        
+        .box{
+        
+            width:100%;
+            max-width:420px;
+            background:#1e1e1e;
+            padding:20px;
+            border-radius:15px;
+        
+        }
+        
+        
+        h2{
+            text-align:center;
+        }
+        
+        
+        input,select,button{
+        
+            width:100%;
+            padding:12px;
+            margin:8px 0;
+            border:none;
+            border-radius:8px;
+            font-size:16px;
+        
+        }
+        
+        
+        button{
+        
+            background:#007bff;
+            color:white;
+            font-weight:bold;
+        
+        }
+        
+        
+        .status{
+        
+            background:#292929;
+            padding:10px;
+            border-radius:8px;
+            text-align:center;
+            color:#ffeb3b;
+            font-size:14px;
+        
+        }
+        
+        
+        video{
+        
+            width:100%;
+            margin-top:10px;
+            background:#000;
+            border-radius:10px;
+        
+        }
+        
+        
+        .hidden{
+        
+            display:none;
+        
+        }
+        
+        
+        .off{
+        
+            background:#d32f2f;
+        
+        }
+        
+    </style>
+
+</head>
+
+
+<body>
+
+
+    <div class="box" id="setup">
+
+        <h2>
+            📷 智能监控
+        </h2>
+
+
+        <div class="status" id="status">
+            等待进入
+        </div>
+
+
+        <input id="room" type="number" value="123" placeholder="房间号码">
+
+
+        <select id="role">
+
+            <option value="camera">
+                📷 摄像头
+            </option>
+
+
+            <option value="viewer">
+                📺 查看器
+            </option>
+
+
+        </select>
+
+
+        <button onclick="start()">
+            进入房间
+        </button>
+
+
+    </div>
+
+
+
+
+    <div class="box hidden" id="screen">
+
+
+        <div class="status" id="live">
+            正在连接...
+        </div>
+
+
+        <video id="video" autoplay playsinline>
+        </video>
+
+
+        <button id="micBtn" onclick="toggleMic()">
+            麦克风：开启
+        </button>
+
+
+        <button onclick="location.reload()">
+            退出
+        </button>
+
+
+    </div>
+
+
+
+
+    <script>
+        let peer=null;
+        
+        let localStream=null;
+        
+        let currentCall=null;
+        
+        let micEnable=true;
+        
+        
+        const live=
+        document.getElementById("live");
+        
+        
+        const video=
+        document.getElementById("video");
+        
+        
+        
+        // STUN
+        
+        const config={
+        
+        iceServers:[
+        
+        {
+        urls:
+        "stun:stun.l.google.com:19302"
+        },
+        
+        {
+        urls:
+        "stun:stun1.l.google.com:19302"
+        },
+        
+        {
+        urls:
+        "stun:stun2.l.google.com:19302"
+        },
+        
+        {
+        urls:
+        "stun:stun3.l.google.com:19302"
+        }
+        
+        ]
+        
+        };
+        
+        
+        
+        function start(){
+        
+        
+        let room=
+        document.getElementById("room").value;
+        
+        
+        let role=
+        document.getElementById("role").value;
+        
+        
+        
+        if(!room){
+        
+        alert("输入房间号");
+        
+        return;
+        
+        }
+        
+        
+        
+        document
+        .getElementById("setup")
+        .classList.add("hidden");
+        
+        
+        
+        document
+        .getElementById("screen")
+        .classList.remove("hidden");
+        
+        
+        
+        let id;
+        
+        
+        if(role==="camera"){
+        
+        id=
+        "camera-"+room;
+        
+        
+        }else{
+        
+        
+        id=
+        "viewer-"+room+"-"+Date.now();
+        
+        
+        }
+        
+        
+        
+        peer=
+        new Peer(
+        id,
+        {
+        config:config,
+        debug:2
+        }
+        );
+        
+        
+        
+        peer.on(
+        "open",
+        ()=>{
+        
+        
+        live.innerHTML=
+        "Peer连接成功";
+        
+        
+        if(role==="camera"){
+        
+        startCamera();
+        
+        }else{
+        
+        startViewer(room);
+        
+        }
+        
+        
+        });
+        
+        
+        peer.on(
+        "error",
+        e=>{
+        
+        
+        live.innerHTML=
+        "错误："+e.type;
+        
+        
+        console.log(e);
+        
+        
+        });
+        
+        
+        }
+          // =============================
+        // 摄像头端
+        // =============================
+        
+        async function startCamera(){
+        
+        
+            live.innerHTML=
+            "正在开启摄像头...";
+        
+        
+            try{
+        
+        
+                localStream=
+                await navigator.mediaDevices.getUserMedia({
+        
+                    video:{
+                        facingMode:"environment",
+                        width:{
+                            ideal:1280
+                        },
+                        height:{
+                            ideal:720
+                        }
+                    },
+        
+                    audio:true
+        
+                });
+        
+        
+        
+                // 显示自己画面
+                video.srcObject=localStream;
+        
+                video.muted=true;
+        
+        
+                live.innerHTML=
+                "📷 摄像头开启，等待查看器";
+        
+        
+        
+                peer.on(
+                "call",
+                call=>{
+        
+        
+                    console.log("收到查看器请求");
+        
+        
+                    if(currentCall){
+        
+                        console.log(
+                        "已有连接，拒绝重复"
+                        );
+        
+                        return;
+        
+                    }
+        
+        
+        
+                    currentCall=call;
+        
+        
+        
+                    // 关键修复：
+                    // 直接发送真实摄像头流
+        
+                    call.answer(localStream);
+        
+        
+        
+                    live.innerHTML=
+                    "📺 查看器已连接";
+        
+        
+        
+                    call.on(
+                    "close",
+                    ()=>{
+        
+        
+                        currentCall=null;
+        
+        
+                        live.innerHTML=
+                        "等待重新连接";
+        
+        
+                    });
+        
+        
+        
+                    call.on(
+                    "error",
+                    e=>{
+        
+        
+                        console.log(e);
+        
+        
+                        currentCall=null;
+        
+        
+                    });
+        
+        
+                });
+        
+        
+        
+            }catch(e){
+        
+        
+                console.log(e);
+        
+        
+                live.innerHTML=
+                "摄像头权限失败";
+        
+        
+                alert(
+                "请允许摄像头和麦克风权限"
+                );
+        
+        
+            }
+        
+        
+        }
+        
+        
+        
+        
+        
+        // =============================
+        // 查看器端
+        // =============================
+        
+        
+        function startViewer(room){
+        
+        
+            let cameraID=
+            "camera-"+room;
+        
+        
+        
+            live.innerHTML=
+            "寻找摄像头...";
+        
+        
+        
+            function connectCamera(){
+        
+        
+                console.log(
+                "呼叫:",
+                cameraID
+                );
+        
+        
+        
+                let emptyStream =
+                new MediaStream();
+        
+        
+        
+                let call;
+        
+        
+                try{
+        
+        
+                    call=
+                    peer.call(
+                        cameraID,
+                        emptyStream
+                    );
+        
+        
+                }catch(e){
+        
+        
+                    console.log(e);
+        
+                    return;
+        
+                }
+        
+        
+        
+                if(!call){
+        
+                    live.innerHTML=
+                    "摄像头未上线";
+        
+        
+                    return;
+        
+                }
+        
+        
+        
+                currentCall=call;
+        
+        
+        
+                call.on(
+                "stream",
+                remoteStream=>{
+        
+        
+                    console.log(
+                    "收到视频流",
+                    remoteStream
+                    );
+        
+        
+        
+                    live.innerHTML=
+                    "✅ 视频连接成功";
+        
+        
+        
+                    video.srcObject=
+                    remoteStream;
+        
+        
+        
+                    video.play()
+                    .catch(()=>{});
+        
+        
+        
+                });
+        
+        
+        
+                call.on(
+                "close",
+                ()=>{
+        
+        
+                    currentCall=null;
+        
+        
+                    live.innerHTML=
+                    "连接断开";
+        
+        
+                    setTimeout(
+                        connectCamera,
+                        3000
+                    );
+        
+        
+                });
+        
+        
+        
+                call.on(
+                "error",
+                e=>{
+        
+        
+                    console.log(e);
+        
+        
+                    currentCall=null;
+        
+        
+                    setTimeout(
+                        connectCamera,
+                        3000
+                    );
+        
+        
+                });
+        
+        
+        
+            }
+        
+        
+        
+            connectCamera();
+        
+        
+        
+            // 自动寻找
+        
+            setInterval(()=>{
+        
+        
+                if(
+                    !video.srcObject &&
+                    !currentCall
+                ){
+        
+                    connectCamera();
+        
+                }
+        
+        
+            },5000);
+        
+        
+        
+        }
+         // =============================
+        // 麦克风控制
+        // =============================
+        
+        function toggleMic(){
+        
+        
+            if(!localStream){
+        
+                return;
+        
+            }
+        
+        
+        
+            micEnable=
+            !micEnable;
+        
+        
+        
+            localStream
+            .getAudioTracks()
+            .forEach(
+            track=>{
+        
+                track.enabled=
+                micEnable;
+        
+            });
+        
+        
+        
+            let btn=
+            document.getElementById("micBtn");
+        
+        
+        
+            if(micEnable){
+        
+        
+                btn.innerHTML=
+                "麦克风：开启";
+        
+        
+                btn.classList.remove("off");
+        
+        
+            }else{
+        
+        
+                btn.innerHTML=
+                "麦克风：关闭";
+        
+        
+                btn.classList.add("off");
+        
+        
+            }
+        
+        
+        }
+        
+        
+        
+        
+        
+        // =============================
+        // 网络状态
+        // =============================
+        
+        
+        window.addEventListener(
+        "online",
+        ()=>{
+        
+        
+            live.innerHTML=
+            "网络恢复";
+        
+        
+        });
+        
+        
+        
+        window.addEventListener(
+        "offline",
+        ()=>{
+        
+        
+            live.innerHTML=
+            "⚠️ 网络断开";
+        
+        
+        });
+        
+        
+        
+        
+        
+        
+        // =============================
+        // Peer重新连接
+        // =============================
+        
+        
+        setInterval(()=>{
+        
+        
+            if(
+                peer &&
+                peer.disconnected
+            ){
+        
+                live.innerHTML=
+                "正在重新连接服务器";
+        
+        
+                peer.reconnect();
+        
+        
+            }
+        
+        
+        },5000);
+        
+        
+        
+        
+        
+        
+        
+        // =============================
+        // 页面退出清理
+        // =============================
+        
+        
+        window.addEventListener(
+        "beforeunload",
+        ()=>{
+        
+        
+            if(localStream){
+        
+        
+                localStream
+                .getTracks()
+                .forEach(
+                track=>{
+        
+                    track.stop();
+        
+                });
+        
+        
+            }
+        
+        
+        
+            if(peer){
+        
+        
+                peer.destroy();
+        
+        
+            }
+        
+        
+        });
+        
+        
+        
+    </script>
+
+
+</body>
+
+</html>
